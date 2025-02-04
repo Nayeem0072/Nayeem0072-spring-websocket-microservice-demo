@@ -1,0 +1,111 @@
+version: '3.8'
+
+services:
+  eureka-server:
+    container_name: eureka-server
+    build:
+      context: ./eureka
+      dockerfile: Dockerfile
+    ports:
+      - "8761:8761"
+    networks:
+      - demo-network
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    ports:
+      - "8081-8082:8081"
+    environment:
+      - EUREKA_URL=http://eureka-server:8761/eureka/
+      - KAFKA_SERVERS=kafka:29092
+    depends_on:
+      - eureka-server
+      - kafka
+    networks:
+      - demo-network
+    deploy:
+      mode: replicated
+      replicas: 2
+
+  chat:
+    container_name: chat
+    build:
+      context: ./chat
+      dockerfile: Dockerfile
+    ports:
+      - "8083:8082"
+    environment:
+      - EUREKA_URL=http://eureka-server:8761/eureka/
+      - KAFKA_SERVERS=kafka:29092
+      - MONGODB_URI=mongodb://mongodb:27017/chatdb
+    depends_on:
+      - eureka-server
+      - backend
+      - kafka
+      - mongodb
+    networks:
+      - demo-network
+
+  gateway:
+    container_name: gateway
+    build:
+      context: ./gateway
+      dockerfile: Dockerfile
+    ports:
+      - "8080:8080"
+    environment:
+      - EUREKA_URL=http://eureka-server:8761/eureka/
+    depends_on:
+      - eureka-server
+      - backend
+      - chat
+    networks:
+      - demo-network
+
+  kafka:
+    container_name: kafka
+    image: confluentinc/cp-kafka:latest
+    ports:
+      - "9092:9092"
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:29092,PLAINTEXT_HOST://localhost:9092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+    depends_on:
+      - zookeeper
+    networks:
+      - demo-network
+
+  zookeeper:
+    container_name: zookeeper
+    image: confluentinc/cp-zookeeper:latest
+    ports:
+      - "2181:2181"
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    networks:
+      - demo-network
+
+  mongodb:
+    container_name: mongodb
+    image: mongo:latest
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongodb_data:/data/db
+    networks:
+      - demo-network
+
+networks:
+  demo-network:
+    # Remove the next line
+    # external: true
+
+volumes:
+  mongodb_data:
